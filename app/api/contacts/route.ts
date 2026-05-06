@@ -10,6 +10,13 @@ export async function GET() {
   }
   try {
     const base = getBaseUrl()
+    console.log("[contacts] env check", {
+      hasBaseUrl: !!process.env.RELATIA_BASE_URL,
+      baseLen: (process.env.RELATIA_BASE_URL ?? "").length,
+      hasToken: !!process.env.RELATIA_TOKEN,
+      tokenLen: (process.env.RELATIA_TOKEN ?? "").length,
+      computedBase: base,
+    })
     const allContacts = await fetchAllPages<any>(`${base}/api/contacts/?page_size=100`)
 
     const contacts = allContacts.map((c: any) => ({
@@ -31,6 +38,7 @@ export async function GET() {
     _cache = { data: result, ts: Date.now() }
     return NextResponse.json(result)
   } catch (err: any) {
+    console.error("[contacts] failed", err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

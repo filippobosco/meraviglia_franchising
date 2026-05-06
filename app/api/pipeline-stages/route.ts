@@ -10,6 +10,13 @@ export async function GET() {
   }
   try {
     const base = getBaseUrl()
+    console.log("[pipeline-stages] env check", {
+      hasBaseUrl: !!process.env.RELATIA_BASE_URL,
+      baseLen: (process.env.RELATIA_BASE_URL ?? "").length,
+      hasToken: !!process.env.RELATIA_TOKEN,
+      tokenLen: (process.env.RELATIA_TOKEN ?? "").length,
+      computedBase: base,
+    })
     const deals = await fetchAllPages<any>(
       `${base}/api/deals/?pipeline_id=${PIPELINE_ID}&page_size=100`
     )
@@ -44,6 +51,7 @@ export async function GET() {
     _cache = { data: result, ts: Date.now() }
     return NextResponse.json(result)
   } catch (err: any) {
+    console.error("[pipeline-stages] failed", err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

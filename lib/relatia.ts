@@ -11,7 +11,10 @@ type PageResponse<T> = { count: number; next: string | null; results: T[] }
 
 async function fetchPage<T>(url: string): Promise<PageResponse<T>> {
   const res: Response = await fetch(url, { headers: headers() })
-  if (!res.ok) throw new Error(`Relatia ${res.status}: ${url}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => "<unreadable>")
+    throw new Error(`Relatia ${res.status} ${res.statusText}: ${url} — body: ${body.slice(0, 300)}`)
+  }
   return res.json() as Promise<PageResponse<T>>
 }
 
