@@ -74,7 +74,8 @@ function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
 const STAGES = [
   { id: "9d5809f6-b247-43fd-bc4e-75450bf4f523", name: "Nuovo contatto",          color: "#3B6FE8" },
   { id: "0c2442be-b683-4bef-be3c-33522713a604", name: "Calendly",                color: "#3B6FE8" },
-  { id: "ded144c7-fac6-493d-aec7-60c1aa9e21ea", name: "NR",                      color: "#6B7280" },
+  { id: "ded144c7-fac6-493d-aec7-60c1aa9e21ea", name: "NR1",                     color: "#6B7280" },
+  { id: "e57b9c89-28b2-4e8b-b6a9-950376d512be", name: "NR2",                     color: "#6B7280" },
   { id: "a6fb6f49-7122-48d7-9f92-a82b0ce7d88a", name: "Mandato spoki",           color: "#3B6FE8" },
   { id: "f3fba568-9dfd-4e23-b322-44e5bb738aa0", name: "In gestione",             color: "#F59E0B" },
   { id: "3a37c0ba-331d-46e0-a2f7-630dae05a9aa", name: "Avvisa lui",              color: "#F59E0B" },
@@ -94,6 +95,7 @@ const CLICKABLE_STAGE_IDS = new Set([
   "31f6b9af-3415-492b-8bf4-38c632dc43a9",
   "d19a4f6c-dec5-48d8-8410-d043d724aabe",
   "ded144c7-fac6-493d-aec7-60c1aa9e21ea",
+  "e57b9c89-28b2-4e8b-b6a9-950376d512be",
 ])
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
