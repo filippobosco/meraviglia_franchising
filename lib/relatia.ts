@@ -31,7 +31,7 @@ async function fetchPageWithRetry<T>(url: string, retries = 3): Promise<PageResp
 }
 
 // Fetches all pages in sequential batches to avoid overwhelming the API
-export async function fetchAllPages<T>(baseUrl: string, concurrency = 15): Promise<T[]> {
+export async function fetchAllPages<T>(baseUrl: string, concurrency = 30): Promise<T[]> {
   const first = await fetchPageWithRetry<T>(baseUrl)
   const results: T[] = [...first.results]
   if (!first.next || first.count <= first.results.length) return results
@@ -57,6 +57,38 @@ export async function fetchAllPages<T>(baseUrl: string, concurrency = 15): Promi
 
 export function getBaseUrl() {
   return BASE_URL
+}
+
+// ─── Cache persistente su /tmp ────────────────────────────────────────────────
+// La cache in-memory muore a ogni cold start della funzione serverless. Su /tmp
+// sopravvive finche' la funzione resta calda ed e' condivisa tra le invocazioni,
+// riducendo i tempi di risposta lato utente. Best-effort: se /tmp non e'
+// scrivibile (build, ambienti read-only) ricade silenziosamente sul fetch live.
+import { promises as fs } from "fs"
+import path from "path"
+
+const CACHE_DIR = "/tmp/relatia-cache"
+
+export async function readDiskCache<T>(key: string, ttlMs: number): Promise<T | null> {
+  try {
+    const file = path.join(CACHE_DIR, `${key}.json`)
+    const raw = await fs.readFile(file, "utf8")
+    const parsed = JSON.parse(raw) as { ts: number; data: T }
+    if (Date.now() - parsed.ts < ttlMs) return parsed.data
+    return null
+  } catch {
+    return null
+  }
+}
+
+export async function writeDiskCache<T>(key: string, data: T): Promise<void> {
+  try {
+    await fs.mkdir(CACHE_DIR, { recursive: true })
+    const file = path.join(CACHE_DIR, `${key}.json`)
+    await fs.writeFile(file, JSON.stringify({ ts: Date.now(), data }))
+  } catch {
+    // ignora: la cache e' best-effort
+  }
 }
 
 export function getCustomValue(custom_values: any[], key: string): string | null {

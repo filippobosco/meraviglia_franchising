@@ -1,23 +1,26 @@
 import { NextResponse } from "next/server"
-import { fetchAllPages, getBaseUrl, getCustomValue, normalizeRegione } from "@/lib/relatia"
+import { fetchAllPages, getBaseUrl, getCustomValue, normalizeRegione, readDiskCache, writeDiskCache } from "@/lib/relatia"
+
+// Su Vercel Hobby il default e' 10s: troppo poco per scaricare tutti i contatti dal CRM.
+export const maxDuration = 60
 
 const CACHE_TTL = 20 * 60 * 1000
-let _cache: { data: { contacts: any[] }; ts: number } | null = null
+const CACHE_KEY = "contacts"
+type ContactsData = { contacts: any[] }
+let _cache: { data: ContactsData; ts: number } | null = null
 
 export async function GET() {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL) {
     return NextResponse.json(_cache.data)
   }
+  const disk = await readDiskCache<ContactsData>(CACHE_KEY, CACHE_TTL)
+  if (disk) {
+    _cache = { data: disk, ts: Date.now() }
+    return NextResponse.json(disk)
+  }
   try {
     const base = getBaseUrl()
-    console.log("[contacts] env check", {
-      hasBaseUrl: !!process.env.RELATIA_BASE_URL,
-      baseLen: (process.env.RELATIA_BASE_URL ?? "").length,
-      hasToken: !!process.env.RELATIA_TOKEN,
-      tokenLen: (process.env.RELATIA_TOKEN ?? "").length,
-      computedBase: base,
-    })
-    const allContacts = await fetchAllPages<any>(`${base}/api/contacts/?page_size=100`)
+    const allContacts = await fetchAllPages<any>(`${base}/api/contacts/?page_size=300`)
 
     const contacts = allContacts.map((c: any) => ({
       id: c.id,
@@ -36,6 +39,7 @@ export async function GET() {
 
     const result = { contacts }
     _cache = { data: result, ts: Date.now() }
+    await writeDiskCache(CACHE_KEY, result)
     return NextResponse.json(result)
   } catch (err: any) {
     console.error("[contacts] failed", err)
