@@ -86,6 +86,7 @@ const STAGES = [
   { id: "1453672f-f0bb-471e-b211-c955f7924be1", name: "Perso",                   color: "#EF4444" },
   { id: "57cfe0e0-f6bd-487a-8287-dd97ff107ffd", name: "Perso dopo one-to-one",   color: "#EF4444" },
   { id: "d19a4f6c-dec5-48d8-8410-d043d724aabe", name: "Affiliati",               color: "#4CAF7D" },
+  { id: "5c05a86e-8c35-4bf9-b889-f6c4151fb7ea", name: "Prenotato webinar",       color: "#F59E0B" },
 ]
 
 const CLICKABLE_STAGE_IDS = new Set([
@@ -96,6 +97,7 @@ const CLICKABLE_STAGE_IDS = new Set([
   "d19a4f6c-dec5-48d8-8410-d043d724aabe",
   "ded144c7-fac6-493d-aec7-60c1aa9e21ea",
   "e57b9c89-28b2-4e8b-b6a9-950376d512be",
+  "5c05a86e-8c35-4bf9-b889-f6c4151fb7ea",
 ])
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
