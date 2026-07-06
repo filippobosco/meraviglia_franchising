@@ -1,46 +1,26 @@
 import { NextResponse } from "next/server"
-import { fetchAllPages, getBaseUrl, getCustomValue, normalizeRegione, readDiskCache, writeDiskCache } from "@/lib/relatia"
+import { readDataset } from "@/lib/kv-cache"
 
-// Su Vercel Hobby il default e' 10s: troppo poco per scaricare tutti i contatti dal CRM.
-export const maxDuration = 60
+// Legge solo da Vercel KV (popolata dal cron /api/cron/warm). Nessuna chiamata
+// live al CRM: risposta sempre <1s, mai 504. Vedi lib/kv-cache.ts.
+export const maxDuration = 10
 
-const CACHE_TTL = 20 * 60 * 1000
-const CACHE_KEY = "contacts"
+const MEM_TTL = 60 * 1000
 type ContactsData = { contacts: any[] }
-let _cache: { data: ContactsData; ts: number } | null = null
+let _mem: { data: ContactsData; ts: number } | null = null
 
 export async function GET() {
-  if (_cache && Date.now() - _cache.ts < CACHE_TTL) {
-    return NextResponse.json(_cache.data)
-  }
-  const disk = await readDiskCache<ContactsData>(CACHE_KEY, CACHE_TTL)
-  if (disk) {
-    _cache = { data: disk, ts: Date.now() }
-    return NextResponse.json(disk)
+  if (_mem && Date.now() - _mem.ts < MEM_TTL) {
+    return NextResponse.json(_mem.data)
   }
   try {
-    const base = getBaseUrl()
-    const allContacts = await fetchAllPages<any>(`${base}/api/contacts/?page_size=300`)
-
-    const contacts = allContacts.map((c: any) => ({
-      id: c.id,
-      full_name: c.full_name ?? `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim(),
-      email: c.email ?? null,
-      phone: c.phone ?? null,
-      created_at: c.created_at,
-      regione: normalizeRegione(getCustomValue(c.custom_values ?? [], "in_quale_regione_risiedi")),
-      professione: getCustomValue(c.custom_values ?? [], "qual_è_la_tua_attuale_professione"),
-      budget: getCustomValue(c.custom_values ?? [], "quanto_puoi_investire_nel_progetto"),
-      azienda: getCustomValue(c.custom_values ?? [], "qual_è_il_nome_della_tua_aziendaattività"),
-      tipo_attivita: getCustomValue(c.custom_values ?? [], "meta_che_tipo_di_attività_hai"),
-      meta_campaign_name: c.meta_campaign_name ?? null,
-      meta_platform: c.meta_platform ?? null,
-    }))
-
-    const result = { contacts }
-    _cache = { data: result, ts: Date.now() }
-    await writeDiskCache(CACHE_KEY, result)
-    return NextResponse.json(result)
+    const cached = await readDataset<ContactsData>("contacts")
+    if (cached?.data) {
+      _mem = { data: cached.data, ts: Date.now() }
+      return NextResponse.json({ ...cached.data, cachedAt: cached.ts })
+    }
+    // Cache non ancora scaldata dal cron: la UI mostra "aggiornamento in corso".
+    return NextResponse.json({ contacts: [], warming: true })
   } catch (err: any) {
     console.error("[contacts] failed", err)
     return NextResponse.json({ error: err.message }, { status: 500 })

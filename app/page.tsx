@@ -339,6 +339,7 @@ export default function DashboardPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [warming, setWarming] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const crmBase = "https://meraviglia.relatiacrm.com"
 
@@ -359,6 +360,8 @@ export default function DashboardPage() {
       const res = await fetch("/api/contacts")
       if (!res.ok) throw new Error(`Errore ${res.status}`)
       const data = await res.json()
+      // La cache KV non e' ancora pronta: il cron la sta popolando.
+      setWarming(Boolean(data.warming))
       setContacts(data.contacts ?? [])
       setLastUpdated(new Date())
     } catch (e: any) {
@@ -369,6 +372,14 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Finche' la cache si sta scaldando, riprova periodicamente.
+  useEffect(() => {
+    if (!warming) return
+    const t = setTimeout(() => { fetchData(); fetchStages() }, 15000)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warming])
 
   const fetchStages = useCallback(async () => {
     setStagesLoading(true)
@@ -659,10 +670,19 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {loading && contacts.length === 0 ? (
+        {warming && (
+          <div style={{
+            background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8,
+            padding: "12px 16px", color: "#B45309", fontSize: 14, marginBottom: 24,
+          }}>
+            Aggiornamento dati in corso… I dati vengono ricaricati dal CRM in background e compariranno tra pochi istanti.
+          </div>
+        )}
+
+        {(loading || warming) && contacts.length === 0 ? (
           <div style={{ textAlign: "center", color: "#6B7280", padding: 80, fontSize: 15 }}>
             <p>Caricamento dati…</p>
-            <p style={{ fontSize: 12, marginTop: 8 }}>Al primo avvio può richiedere 2–3 minuti. I successivi saranno istantanei.</p>
+            <p style={{ fontSize: 12, marginTop: 8 }}>Al primo popolamento della cache può richiedere qualche minuto. I successivi saranno istantanei.</p>
           </div>
         ) : (
           <>

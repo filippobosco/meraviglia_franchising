@@ -30,66 +30,58 @@ async function fetchPageWithRetry<T>(url: string, retries = 3): Promise<PageResp
   throw new Error("unreachable")
 }
 
-// Fetches all pages in sequential batches to avoid overwhelming the API
-export async function fetchAllPages<T>(baseUrl: string, concurrency = 30): Promise<T[]> {
+// Reads the first page to learn the total number of pages the CRM will serve.
+// Il CRM ignora page_size oltre 100, quindi il conteggio pagine va derivato
+// dalla lunghezza reale della prima pagina, non dal page_size richiesto.
+export async function fetchFirstPage<T>(
+  baseUrl: string,
+): Promise<{ results: T[]; count: number; totalPages: number }> {
   const first = await fetchPageWithRetry<T>(baseUrl)
-  const results: T[] = [...first.results]
-  if (!first.next || first.count <= first.results.length) return results
+  const per = first.results.length
+  const totalPages = per > 0 ? Math.ceil(first.count / per) : 1
+  return { results: first.results, count: first.count, totalPages }
+}
 
-  const pageSize = first.results.length
-  const totalPages = Math.ceil(first.count / pageSize)
-
+// Fetches pages [fromPage, toPage] (1-indexed, inclusive) in concurrent batches.
+// Pagina 1 e' gia' scaricata da fetchFirstPage, quindi i chiamanti tipicamente
+// partono da fromPage=2. Concorrenza bassa: il CRM Relatia va in timeout di
+// connessione sopra ~12 richieste parallele.
+export async function fetchPagesRange<T>(
+  baseUrl: string,
+  fromPage: number,
+  toPage: number,
+  concurrency = 12,
+): Promise<T[]> {
   const pageUrls: string[] = []
-  for (let page = 2; page <= totalPages; page++) {
+  for (let page = fromPage; page <= toPage; page++) {
     const u = new URL(baseUrl)
     u.searchParams.set("page", String(page))
     pageUrls.push(u.toString())
   }
 
+  const results: T[] = []
   for (let i = 0; i < pageUrls.length; i += concurrency) {
     const batch = pageUrls.slice(i, i + concurrency)
     const pages = await Promise.all(batch.map(u => fetchPageWithRetry<T>(u)))
     for (const p of pages) results.push(...p.results)
   }
+  return results
+}
 
+// Fetches all pages. Wrapper attorno a fetchFirstPage + fetchPagesRange.
+export async function fetchAllPages<T>(baseUrl: string, concurrency = 12): Promise<T[]> {
+  const first = await fetchFirstPage<T>(baseUrl)
+  const results: T[] = [...first.results]
+  if (first.totalPages <= 1) return results
+  const rest = await fetchPagesRange<T>(baseUrl, 2, first.totalPages, concurrency)
+  results.push(...rest)
   return results
 }
 
 export function getBaseUrl() {
   return BASE_URL
 }
-
-// ─── Cache persistente su /tmp ────────────────────────────────────────────────
-// La cache in-memory muore a ogni cold start della funzione serverless. Su /tmp
-// sopravvive finche' la funzione resta calda ed e' condivisa tra le invocazioni,
-// riducendo i tempi di risposta lato utente. Best-effort: se /tmp non e'
-// scrivibile (build, ambienti read-only) ricade silenziosamente sul fetch live.
-import { promises as fs } from "fs"
-import path from "path"
-
-const CACHE_DIR = "/tmp/relatia-cache"
-
-export async function readDiskCache<T>(key: string, ttlMs: number): Promise<T | null> {
-  try {
-    const file = path.join(CACHE_DIR, `${key}.json`)
-    const raw = await fs.readFile(file, "utf8")
-    const parsed = JSON.parse(raw) as { ts: number; data: T }
-    if (Date.now() - parsed.ts < ttlMs) return parsed.data
-    return null
-  } catch {
-    return null
-  }
-}
-
-export async function writeDiskCache<T>(key: string, data: T): Promise<void> {
-  try {
-    await fs.mkdir(CACHE_DIR, { recursive: true })
-    const file = path.join(CACHE_DIR, `${key}.json`)
-    await fs.writeFile(file, JSON.stringify({ ts: Date.now(), data }))
-  } catch {
-    // ignora: la cache e' best-effort
-  }
-}
+// Nota: la cache persistente e' migrata da /tmp a Vercel KV — vedi lib/kv-cache.ts.
 
 export function getCustomValue(custom_values: any[], key: string): string | null {
   const found = custom_values?.find((cv: any) => cv.custom_field?.key === key)
