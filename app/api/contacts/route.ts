@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
+import { waitUntil } from "@vercel/functions"
 import { readDataset } from "@/lib/kv-cache"
+import { warmTick, REFRESH_AFTER_MS } from "@/lib/warm"
 
-// Legge solo da Vercel KV (popolata dal cron /api/cron/warm). Nessuna chiamata
-// live al CRM: risposta sempre <1s, mai 504. Vedi lib/kv-cache.ts.
-export const maxDuration = 10
+// Serve la cache KV (sempre istantaneo, mai 504). Se la cache e' stantia o
+// assente, innesca un tick di warming in background con waitUntil: l'utente
+// non aspetta, e il dato si aggiorna per le visite successive.
+export const maxDuration = 60
 
 const MEM_TTL = 60 * 1000
 type ContactsData = { contacts: any[] }
@@ -15,11 +18,16 @@ export async function GET() {
   }
   try {
     const cached = await readDataset<ContactsData>("contacts")
+
+    if (!cached?.data || Date.now() - cached.ts > REFRESH_AFTER_MS) {
+      waitUntil(warmTick().catch(e => console.error("[contacts] warm failed", e)))
+    }
+
     if (cached?.data) {
       _mem = { data: cached.data, ts: Date.now() }
       return NextResponse.json({ ...cached.data, cachedAt: cached.ts })
     }
-    // Cache non ancora scaldata dal cron: la UI mostra "aggiornamento in corso".
+    // Primo avvio assoluto: cache mai popolata, il warming e' appena partito.
     return NextResponse.json({ contacts: [], warming: true })
   } catch (err: any) {
     console.error("[contacts] failed", err)

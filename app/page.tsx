@@ -51,6 +51,14 @@ function formatDate(iso: string) {
   })
 }
 
+// La cache scarica dal CRM solo gli ultimi 90 giorni (vedi WINDOW_DAYS in
+// lib/warm.ts): il date picker non permette di andare piu' indietro.
+function minSelectableDate() {
+  const d = new Date()
+  d.setDate(d.getDate() - 90)
+  return d.toISOString().split("T")[0]
+}
+
 function defaultDateRange() {
   const end = new Date()
   const start = new Date()
@@ -586,6 +594,7 @@ export default function DashboardPage() {
               <span style={filterLabelStyle}>Dal</span>
               <input
                 type="date"
+                min={minSelectableDate()}
                 value={dateRange.from}
                 onChange={e => setDateRange(p => ({ ...p, from: e.target.value }))}
                 style={inputStyle}

@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
+import { waitUntil } from "@vercel/functions"
 import { readDataset } from "@/lib/kv-cache"
+import { warmTick, REFRESH_AFTER_MS } from "@/lib/warm"
 
-// Legge solo da Vercel KV (popolata dal cron /api/cron/warm). Nessuna chiamata
-// live al CRM: risposta sempre <1s, mai 504. Vedi lib/kv-cache.ts.
-export const maxDuration = 10
+// Serve la cache KV (sempre istantaneo, mai 504). Se la cache e' stantia o
+// assente, innesca un tick di warming in background con waitUntil.
+export const maxDuration = 60
 
 const MEM_TTL = 60 * 1000
 type PipelineData = { stageCounts: Record<string, number>; stageDeals: Record<string, any[]> }
@@ -15,6 +17,11 @@ export async function GET() {
   }
   try {
     const cached = await readDataset<PipelineData>("pipeline-stages")
+
+    if (!cached?.data || Date.now() - cached.ts > REFRESH_AFTER_MS) {
+      waitUntil(warmTick().catch(e => console.error("[pipeline-stages] warm failed", e)))
+    }
+
     if (cached?.data) {
       _mem = { data: cached.data, ts: Date.now() }
       return NextResponse.json({ ...cached.data, cachedAt: cached.ts })
