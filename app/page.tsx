@@ -381,11 +381,13 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Finche' la cache si sta scaldando, riprova periodicamente.
+  // Finche' la cache si sta scaldando, riprova periodicamente. setInterval e
+  // non setTimeout: `warming` resta true tra un retry e l'altro, quindi l'effect
+  // non viene ri-eseguito — un timeout singolo farebbe UN solo retry e poi stop.
   useEffect(() => {
     if (!warming) return
-    const t = setTimeout(() => { fetchData(); fetchStages() }, 15000)
-    return () => clearTimeout(t)
+    const t = setInterval(() => { fetchData(); fetchStages() }, 20000)
+    return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [warming])
 

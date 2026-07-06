@@ -27,9 +27,10 @@ import {
 // scaricati (24.7k contatti totali non stanno in nessun budget serverless).
 export const WINDOW_DAYS = 90
 
-// Budget di un tick: margine ampio sui 60s di maxDuration.
-const TICK_BUDGET_MS = 40_000
-const PAGES_PER_BATCH = 12
+// Budget di un tick: margine sui 60s di maxDuration.
+const TICK_BUDGET_MS = 50_000
+// Piu' pagine per iterazione = meno scritture di staging su KV per tick.
+const PAGES_PER_BATCH = 36
 const CONCURRENCY = 12
 // Un ciclo appeso da troppo tempo viene ricominciato da capo.
 const STALE_CYCLE_MS = 30 * 60 * 1000
@@ -185,7 +186,7 @@ async function finalize<T>(key: string, acc: T[]): Promise<void> {
 // visite concorrenti non fanno partire warming doppi.
 
 export async function warmTick(): Promise<Record<string, any>> {
-  const acquired = await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: 55 })
+  const acquired = await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: 58 })
   if (acquired !== "OK") return { skipped: "warming gia' in corso" }
 
   const base = getBaseUrl()
