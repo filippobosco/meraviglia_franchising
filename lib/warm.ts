@@ -18,6 +18,7 @@ import {
 import {
   clearWarmState,
   readDataset,
+  readDatasetTs,
   readWarmState,
   writeDataset,
   writeWarmState,
@@ -177,6 +178,16 @@ async function finalize<T>(key: string, acc: T[]): Promise<void> {
 // Un solo tick alla volta: lock su KV con scadenza automatica (NX + EX), cosi'
 // visite concorrenti non fanno partire warming doppi.
 
+// Un dataset va scaldato solo se ha un ciclo gia' in corso da riprendere o se
+// il dataset finale e' stantio. Senza questo check i contatti (sempre primi)
+// ripartirebbero da zero a ogni tick anche se appena aggiornati, affamando i
+// deal, il cui ciclo non completerebbe mai.
+async function needsWarming(stagingKey: string, finalKey: string): Promise<boolean> {
+  if (await readWarmState(stagingKey)) return true
+  const ts = await readDatasetTs(finalKey)
+  return ts == null || Date.now() - ts > REFRESH_AFTER_MS
+}
+
 export async function warmTick(): Promise<Record<string, any>> {
   const acquired = await kv.set(LOCK_KEY, Date.now(), { nx: true, ex: 58 })
   if (acquired !== "OK") return { skipped: "warming gia' in corso" }
@@ -187,14 +198,20 @@ export async function warmTick(): Promise<Record<string, any>> {
   const report: Record<string, any> = { window_days: WINDOW_DAYS, cutoff }
 
   try {
-    report.contacts = await warmDataset(
-      CONTACTS_KEY,
-      `${base}/api/contacts/?page_size=300&created_after=${cutoff}`,
-      trimContact,
-      deadline,
-    )
+    if (await needsWarming(CONTACTS_KEY, CONTACTS_KEY)) {
+      report.contacts = await warmDataset(
+        CONTACTS_KEY,
+        `${base}/api/contacts/?page_size=300&created_after=${cutoff}`,
+        trimContact,
+        deadline,
+      )
+    } else {
+      report.contacts = { skipped: "dataset fresco" }
+    }
 
-    if (Date.now() < deadline) {
+    if (Date.now() >= deadline) {
+      report.stages = { skipped: "budget esaurito in questo tick" }
+    } else if (await needsWarming(STAGES_KEY, STAGES_FINAL_KEY)) {
       report.stages = await warmDataset<RawDeal>(
         STAGES_KEY,
         `${base}/api/deals/?pipeline_id=${PIPELINE_ID}&page_size=300`,
@@ -202,7 +219,7 @@ export async function warmTick(): Promise<Record<string, any>> {
         deadline,
       )
     } else {
-      report.stages = { skipped: "budget esaurito in questo tick" }
+      report.stages = { skipped: "dataset fresco" }
     }
     return report
   } finally {

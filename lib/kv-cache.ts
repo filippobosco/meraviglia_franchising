@@ -33,6 +33,13 @@ export async function writeDataset<T>(key: string, data: T): Promise<void> {
   await kv.set(`${key}:meta`, meta)
 }
 
+// Solo il timestamp del dataset, senza scaricare i chunk: serve a decidere
+// se un dataset va ri-scaldato.
+export async function readDatasetTs(key: string): Promise<number | null> {
+  const meta = await kv.get<DatasetMeta>(`${key}:meta`)
+  return meta?.ts ?? null
+}
+
 export async function readDataset<T>(
   key: string,
   ttlMs?: number,
