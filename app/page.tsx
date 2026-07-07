@@ -384,12 +384,13 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Finche' la cache si sta scaldando, riprova periodicamente. setInterval e
-  // non setTimeout: `warming` resta true tra un retry e l'altro, quindi l'effect
-  // non viene ri-eseguito — un timeout singolo farebbe UN solo retry e poi stop.
+  // Auto-refresh: ogni 20s durante il primo popolamento della cache, ogni 60s
+  // a regime. Oltre a tenere freschi i dati, ogni richiesta fa avanzare di un
+  // blocco gli eventuali cicli di aggiornamento in background lato server.
+  // setInterval e non setTimeout: `warming` resta true tra un retry e l'altro,
+  // quindi l'effect non viene ri-eseguito.
   useEffect(() => {
-    if (!warming) return
-    const t = setInterval(() => { fetchData(); fetchStages() }, 20000)
+    const t = setInterval(() => { fetchData(); fetchStages() }, warming ? 20000 : 60000)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [warming])
@@ -472,10 +473,23 @@ export default function DashboardPage() {
     return m
   }, [contacts])
 
-  const filteredContactIds = useMemo(
-    () => new Set(filtered.map(c => c.id)),
-    [filtered],
-  )
+  // Contatti che passano i soli filtri per attributo (regione/professione/
+  // budget), SENZA il filtro data: la data va applicata al deal, non al suo
+  // contatto — un deal creato nel range il cui contatto e' nato prima deve
+  // comunque contare. null = nessun filtro attributo attivo.
+  const attrFilteredContactIds = useMemo(() => {
+    if (filterRegione === "Tutte" && filterProfessione === "Tutte" && filterBudget === "Tutti") {
+      return null
+    }
+    const s = new Set<string>()
+    for (const c of contacts) {
+      if (filterRegione !== "Tutte" && c.regione !== filterRegione) continue
+      if (filterProfessione !== "Tutte" && (c.professione ?? "Non specificata") !== filterProfessione) continue
+      if (filterBudget !== "Tutti" && (c.budget ?? "Non specificato") !== filterBudget) continue
+      s.add(c.id)
+    }
+    return s
+  }, [contacts, filterRegione, filterProfessione, filterBudget])
 
   const dealMatchesFilters = useCallback(
     (deal: { contactId: string | null; dealCreatedAt: string }) => {
@@ -483,14 +497,12 @@ export default function DashboardPage() {
       const to = new Date(dateRange.to + "T23:59:59")
       const d = new Date(deal.dealCreatedAt)
       if (d < from || d > to) return false
-      if (deal.contactId && filteredContactIds.size > 0) {
-        return filteredContactIds.has(deal.contactId)
+      if (attrFilteredContactIds) {
+        return deal.contactId ? attrFilteredContactIds.has(deal.contactId) : false
       }
-      return filterRegione === "Tutte"
-        && filterProfessione === "Tutte"
-        && filterBudget === "Tutti"
+      return true
     },
-    [dateRange, filteredContactIds, filterRegione, filterProfessione, filterBudget],
+    [dateRange, attrFilteredContactIds],
   )
 
   const filteredStageDeals = useMemo(() => {
