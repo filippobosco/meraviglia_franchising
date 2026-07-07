@@ -77,12 +77,12 @@ type RawDeal = {
   stageId: string
 }
 
-// cutoff: i deal piu' vecchi della finestra vengono scartati.
-function trimDeal(deal: any, cutoffIso: string): RawDeal | null {
+// I deal NON hanno finestra temporale: la vista "Situazione attuale" della
+// pipeline deve includere anche deal creati anni fa e spostati di stadio oggi.
+function trimDeal(deal: any): RawDeal | null {
   if (deal.pipeline_name && deal.pipeline_name !== "Richieste Franchising") return null
   const stageId: string | null = deal.current_stage ?? null
   if (!stageId) return null
-  if (deal.created_at && deal.created_at.slice(0, 10) < cutoffIso) return null
   const c = deal.contact ?? {}
   return {
     dealId: deal.id,
@@ -115,16 +115,12 @@ function buildStages(raw: RawDeal[]) {
 }
 
 // ─── Warming incrementale di un dataset paginato ───────────────────────────────
-// `stopAfterBatch`: con risultati ordinati dal piu' recente, permette di fermarsi
-// appena un batch esce dalla finestra temporale (early-stop per i deal, il cui
-// endpoint non supporta created_after).
 
 async function warmDataset<T>(
   key: string,
   baseUrl: string,
   trim: (raw: any) => T | null,
   deadline: number,
-  stopAfterBatch?: (batch: any[]) => boolean,
 ): Promise<{ done: boolean; page: number; totalPages: number }> {
   let state = await readWarmState(key)
 
@@ -132,9 +128,8 @@ async function warmDataset<T>(
     const first = await fetchFirstPage<any>(baseUrl)
     const firstTrimmed = first.results.map(trim).filter((x): x is T => x != null)
     await writeDataset(`${key}:staging`, firstTrimmed)
-    const earlyStop = stopAfterBatch?.(first.results) ?? false
     state = {
-      nextPage: earlyStop ? first.totalPages + 1 : 2,
+      nextPage: 2,
       totalPages: first.totalPages,
       startedTs: Date.now(),
     }
@@ -157,9 +152,6 @@ async function warmDataset<T>(
       if (t != null) acc.push(t)
     }
     state.nextPage = to + 1
-    if (stopAfterBatch?.(batch)) {
-      state.nextPage = state.totalPages + 1 // early-stop: fuori finestra
-    }
     await writeDataset(`${key}:staging`, acc)
     await writeWarmState(key, state)
   }
@@ -205,15 +197,9 @@ export async function warmTick(): Promise<Record<string, any>> {
     if (Date.now() < deadline) {
       report.stages = await warmDataset<RawDeal>(
         STAGES_KEY,
-        `${base}/api/deals/?pipeline_id=${PIPELINE_ID}&page_size=300&ordering=-created_at`,
-        raw => trimDeal(raw, cutoff),
+        `${base}/api/deals/?pipeline_id=${PIPELINE_ID}&page_size=300`,
+        trimDeal,
         deadline,
-        // Risultati dal piu' recente: appena l'ultimo del batch esce dalla
-        // finestra, le pagine successive sono tutte piu' vecchie.
-        batch => {
-          const last = batch[batch.length - 1]
-          return Boolean(last?.created_at && last.created_at.slice(0, 10) < cutoff)
-        },
       )
     } else {
       report.stages = { skipped: "budget esaurito in questo tick" }

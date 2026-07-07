@@ -360,6 +360,9 @@ export default function DashboardPage() {
   const [stageDeals, setStageDeals] = useState<Record<string, StageDeal[]>>({})
   const [stageDrawer, setStageDrawer] = useState<StageDrawerState>({ open: false, stageName: "", deals: [] })
   const [stagesLoading, setStagesLoading] = useState(false)
+  // "periodo": deal filtrati per data/regione/ecc. (default). "attuale": foto
+  // di chi c'e' ORA in ogni stadio, ignora tutti i filtri.
+  const [pipelineView, setPipelineView] = useState<"periodo" | "attuale">("periodo")
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -516,7 +519,8 @@ export default function DashboardPage() {
   }
 
   const openStageDrawer = (stageId: string, stageName: string) => {
-    setStageDrawer({ open: true, stageName, deals: filteredStageDeals[stageId] ?? [] })
+    const source = pipelineView === "attuale" ? stageDeals : filteredStageDeals
+    setStageDrawer({ open: true, stageName, deals: source[stageId] ?? [] })
   }
 
   const inputStyle: React.CSSProperties = {
@@ -707,17 +711,45 @@ export default function DashboardPage() {
 
             {/* Distribuzione Pipeline */}
             <div style={{ background: "#fff", border: "1px solid #E8EAF0", borderRadius: 8, padding: "20px 24px", marginBottom: 28 }}>
-              <div style={{ marginBottom: 16 }}>
-                <span style={{ color: "#1A1A2E", fontWeight: 600, fontSize: 15 }}>
-                  Distribuzione Pipeline Richieste Franchising
-                </span>
+              <div style={{ marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <span style={{ color: "#1A1A2E", fontWeight: 600, fontSize: 15 }}>
+                    Distribuzione Pipeline Richieste Franchising
+                  </span>
+                  {pipelineView === "attuale" && (
+                    <p style={{ color: "#6B7280", fontSize: 12, marginTop: 4 }}>
+                      Tutti i deal attualmente in ogni stadio — i filtri non si applicano
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: "flex", border: "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden" }}>
+                  {([["periodo", "Nel periodo"], ["attuale", "Situazione attuale"]] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setPipelineView(key)}
+                      style={{
+                        border: "none",
+                        padding: "7px 14px",
+                        fontSize: 12,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        background: pipelineView === key ? "#1A1A2E" : "#fff",
+                        color: pipelineView === key ? "#fff" : "#6B7280",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
               {stagesLoading ? (
                 <p style={{ color: "#6B7280", fontSize: 14 }}>Caricamento pipeline…</p>
               ) : (
                 <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
                   {STAGES.map(stage => {
-                    const count = filteredStageCounts[stage.id] ?? 0
+                    const count = pipelineView === "attuale"
+                      ? (stageDeals[stage.id]?.length ?? 0)
+                      : (filteredStageCounts[stage.id] ?? 0)
                     const clickable = CLICKABLE_STAGE_IDS.has(stage.id)
                     return (
                       <div
